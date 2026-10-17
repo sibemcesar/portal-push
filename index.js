@@ -21,24 +21,37 @@ app.post('/notificar', async (req, res) => {
     const user = await admin.auth().verifyIdToken(idToken);
     if (!ADMINS.includes(user.email)) return res.status(403).send('proibido');
 
-    const { titulo, corpo, link } = req.body;
+    const { titulo, corpo, link, alvoUid } = req.body;
     if (!titulo || !corpo) return res.status(400).send('faltam dados');
 
-    const snap = await admin.database().ref('fcmTokens').get();
     const entradas = [];
-    snap.forEach(u => {
-      const v = u.val();
-      if (v && v.token) entradas.push({ uid: u.key, token: v.token });
-    });
+    if (alvoUid) {
+      if (typeof alvoUid !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(alvoUid)) {
+        return res.status(400).send('uid invalido');
+      }
+      const s = await admin.database().ref('fcmTokens/' + alvoUid).get();
+      const v = s.val();
+      if (v && v.token) entradas.push({ uid: alvoUid, token: v.token });
+    } else {
+      const snap = await admin.database().ref('fcmTokens').get();
+      snap.forEach(u => {
+        const v = u.val();
+        if (v && v.token) entradas.push({ uid: u.key, token: v.token });
+      });
+    }
 
     let enviados = 0;
     for (let i = 0; i < entradas.length; i += 500) {
       const lote = entradas.slice(i, i + 500);
-      const r = await admin.messaging().sendEachForMulticast({
+      const msg = {
         tokens: lote.map(e => e.token),
         notification: { title: titulo, body: corpo },
-        data: { link: link || '' }
-      });
+        webpush: { notification: { icon: 'https://portaldigital.vercel.app/logo.png' } }
+      };
+      if (link && /^https:\/\//.test(link)) {
+        msg.webpush.fcmOptions = { link };
+      }
+      const r = await admin.messaging().sendEachForMulticast(msg);
       enviados += r.successCount;
       r.responses.forEach((x, idx) => {
         const c = x.error && x.error.code;
