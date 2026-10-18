@@ -31,6 +31,22 @@ function urlHttps(v) {
   return /^https:\/\//.test(s) ? s : '';
 }
 
+// Os avisos só chegam a navegadores externos, por isso o link de um conteúdo (?id=...)
+// tem de apontar sempre para /web.html, mesmo que o app envie só "/?id=...".
+function linkConteudo(v) {
+  const s = urlHttps(v);
+  try {
+    const u = new URL(s);
+    if (u.hostname === 'portaldigital.vercel.app' &&
+        (u.pathname === '/' || u.pathname === '/index.html') &&
+        u.searchParams.get('id')) {
+      u.pathname = '/web.html';
+      return u.href;
+    }
+  } catch (e) {}
+  return s;
+}
+
 app.post('/notificar', async (req, res) => {
   try {
     const idToken = (req.headers.authorization || '').replace('Bearer ', '');
@@ -43,7 +59,7 @@ app.post('/notificar', async (req, res) => {
     const alvoUid = body.alvoUid;
     if (!titulo || !corpo) return res.status(400).send('faltam dados');
 
-    const link = urlHttps(body.link);
+    const link = linkConteudo(body.link);
     const imagem = urlHttps(body.imagem);
     const tipo = TIPOS.includes(body.tipo) ? body.tipo : '';
     const tag = /^[A-Za-z0-9_-]{1,64}$/.test(body.tag || '') ? body.tag : (tipo ? 'novo-conteudo' : 'geral');
